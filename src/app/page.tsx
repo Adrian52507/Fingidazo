@@ -345,7 +345,7 @@ function Cube() {
     <>
       {!clicked && (
         <Html position={[0, 0.9, 0]} center>
-          <p className="start-instruction">Haz clic en el cubo para empezar</p>
+          <p className="start-instruction">Tócame</p>
         </Html>
       )}
       <group
