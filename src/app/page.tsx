@@ -1,7 +1,7 @@
 "use client";
 
 import { Canvas, useFrame } from "@react-three/fiber";
-import { Edges, Text } from "@react-three/drei";
+import { Edges, Html, Text } from "@react-three/drei";
 import { useRef, useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { Group } from "three";
@@ -343,6 +343,11 @@ function Cube() {
 
   return (
     <>
+      {!clicked && (
+        <Html position={[0, 0.9, 0]} center>
+          <p className="start-instruction">Haz clic en el cubo para empezar</p>
+        </Html>
+      )}
       <group
         ref={groupRef}
         scale={0.5}
