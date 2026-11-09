@@ -31,6 +31,8 @@ const ANIMATION_CONFIG = {
   facesExplosionSpeed: (index: number) => 4 + index * 0.5,
 };
 
+const EMOJI_FONT_URL = "/fonts/noto-emoji-devil.woff";
+
 type FaceData = {
   velocity: [number, number, number];
   spinX: number;
@@ -395,6 +397,10 @@ function Cube() {
         <Suspense fallback={null}>
         <Text
           ref={textRef}
+          // Fuente local con solo el glifo 😈 (Noto Emoji, OFL): evita que troika
+          // descargue la fuente de respaldo desde cdn.jsdelivr.net.
+          font={EMOJI_FONT_URL}
+          characters="😈"
           position={[0, 0, -4]}
           fontSize={0.55}
           color="white"
