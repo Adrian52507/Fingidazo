@@ -2,10 +2,9 @@
 
 import { Canvas, useFrame } from "@react-three/fiber";
 import { Edges, Html, Text } from "@react-three/drei";
-import { useRef, useState, useEffect, useCallback } from "react";
+import { Suspense, useRef, useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
-import { Group } from "three";
-import { DoubleSide } from "three";
+import { DoubleSide, type Group, type Mesh, type MeshBasicMaterial } from "three";
 
 // 🎯 UNIFIED ANIMATION TIMING CONFIG - TODO DEPENDE DE ESTO
 const ANIMATION_CONFIG = {
@@ -32,23 +31,66 @@ const ANIMATION_CONFIG = {
   facesExplosionSpeed: (index: number) => 4 + index * 0.5,
 };
 
+type FaceData = {
+  velocity: [number, number, number];
+  spinX: number;
+  spinY: number;
+  spinZ: number;
+};
+
+type FaceProps = {
+  index: number;
+  position: [number, number, number];
+  rotation: [number, number, number];
+  registerEdge: (index: number, el: Mesh | null) => void;
+};
+
+// Definido fuera de <Cube>: si se declara dentro, React lo trata como un
+// componente nuevo en cada render y remonta las caras a mitad de la explosión.
+function Face({ position, rotation, index, registerEdge }: FaceProps) {
+  return (
+    <group position={position}>
+      <mesh rotation={rotation}>
+        <planeGeometry args={[1, 1]} />
+        <meshBasicMaterial color="#ffffff" side={DoubleSide} />
+        <Edges
+          ref={(el: Mesh | null) => registerEdge(index, el)}
+          scale={1.01}
+          threshold={15}
+          color="black"
+        />
+      </mesh>
+    </group>
+  );
+}
+
+function setCursor(value: "pointer" | "auto") {
+  document.body.style.cursor = value;
+}
+
 function Cube() {
   const router = useRouter();
   const groupRef = useRef<Group>(null!);
-  const textRef = useRef<any>(null);
-  const edgeRefs = useRef<any[]>(Array(6).fill(null));
+  const textRef = useRef<Mesh>(null);
+  const edgeRefs = useRef<(Mesh | null)[]>(Array(6).fill(null));
+  const registerEdge = useCallback((index: number, el: Mesh | null) => {
+    edgeRefs.current[index] = el;
+  }, []);
 
   const [hovered, setHovered] = useState(false);
   const [clicked, setClicked] = useState(false);
   const [exploding, setExploding] = useState(false);
   const [showText, setShowText] = useState(false);
   const [animationComplete, setAnimationComplete] = useState(false);
-  const [textFadingOut, setTextFadingOut] = useState(false);
 
-  const speed = useRef({
-    x: 0.02 + Math.random() * 0.04,
-    y: 0.02 + Math.random() * 0.04,
-  });
+  const speed = useRef({ x: 0.04, y: 0.04 });
+
+  // Velocidad inicial aleatoria (fuera del render para mantenerlo puro).
+  useEffect(() => {
+    speed.current = { x: 0.02 + Math.random() * 0.04, y: 0.02 + Math.random() * 0.04 };
+    // Al salir de la portada, el cursor no debe quedarse en "pointer" en el resto del sitio.
+    return () => setCursor("auto");
+  }, []);
 
   const baseSpeed = useRef({ x: 0.03, y: 0.035 });
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -64,7 +106,7 @@ function Cube() {
   });
 
   // Almacenar datos de explosión para cada cara
-  const faceDataRef = useRef<any[]>([
+  const faceDataRef = useRef<FaceData[]>([
     { velocity: [0, 0, 1], spinX: 0, spinY: 0, spinZ: 0 },
     { velocity: [0, 0, -1], spinX: 0, spinY: 0, spinZ: 0 },
     { velocity: [1, 0, 0], spinX: 0, spinY: 0, spinZ: 0 },
@@ -83,13 +125,11 @@ function Cube() {
 
       audio.oncanplaythrough = () => {
         audioReady.current = true;
-        console.log("✅ Audio fully buffered and ready");
       };
 
       audio.onloadeddata = () => {
         if (!audioReady.current) {
           audioReady.current = true;
-          console.log("✅ Audio metadata loaded (fallback)");
         }
       };
 
@@ -108,30 +148,24 @@ function Cube() {
         audioRef.current?.pause();
         audioRef.current!.currentTime = 0;
         audioReady.current = true;
-        console.log("✅ Audio context unlocked");
       }).catch(() => {});
     }
   }, []);
 
-  // Fade out del texto y navegación al juego
+  // Cuando termina la animación, el texto se desvanece y se navega al juego.
   useEffect(() => {
-    if (animationComplete && !textFadingOut) {
-      setTextFadingOut(true);
-    }
-  }, [animationComplete, textFadingOut]);
-
-  useEffect(() => {
-    if (textFadingOut) {
+    if (animationComplete) {
       const timer = setTimeout(() => {
         router.push('/game');
       }, ANIMATION_CONFIG.textFadeOutDuration * 1000);
       return () => clearTimeout(timer);
     }
-  }, [textFadingOut, router]);
+  }, [animationComplete, router]);
 
   const handleClick = useCallback(() => {
     if (!clicked) {
       ensureAudioContext();
+      setCursor("auto");
       setClicked(true);
     }
   }, [clicked, ensureAudioContext]);
@@ -193,7 +227,7 @@ function Cube() {
       );
 
       // Mover y animar caras basado en TIMELINE
-      groupRef.current.children.forEach((child: any, index) => {
+      groupRef.current.children.forEach((child, index) => {
         if (!child || index >= 6) return;
         
         const faceData = faceDataRef.current[index];
@@ -218,19 +252,20 @@ function Cube() {
         child.scale.setScalar(scale);
 
         // Opacidad de CARAS: sincronizada con timeline
-        child.children.forEach((mesh: any) => {
-          if (mesh.material) {
-            mesh.material.transparent = true;
-            mesh.material.opacity = Math.max(0, 1 - faceFadeProgress * 1.5);
+        child.children.forEach((obj) => {
+          const material = (obj as Mesh).material as MeshBasicMaterial | undefined;
+          if (material) {
+            material.transparent = true;
+            material.opacity = Math.max(0, 1 - faceFadeProgress * 1.5);
           }
         });
 
         // Opacidad de BORDES: sincronizada exactamente igual
         if (edgeRefs.current[index]) {
-          const edgeLines = edgeRefs.current[index];
-          if (edgeLines.material) {
-            edgeLines.material.transparent = true;
-            edgeLines.material.opacity = Math.max(0, 1 - faceFadeProgress * 1.5);
+          const edgeMaterial = edgeRefs.current[index]?.material as MeshBasicMaterial | undefined;
+          if (edgeMaterial) {
+            edgeMaterial.transparent = true;
+            edgeMaterial.opacity = Math.max(0, 1 - faceFadeProgress * 1.5);
           }
         }
       });
@@ -259,6 +294,16 @@ function Cube() {
       
       if (textTriggerProgress >= 1.0 && !showText) {
         setShowText(true);
+      }
+
+      // ✅ FIN: depende solo del tiempo, no de que el texto 3D haya cargado.
+      // (La fuente del texto se descarga de un CDN; si falla, igual se entra al juego.)
+      const animationEnd =
+        ANIMATION_CONFIG.textAppearanceDelay +
+        ANIMATION_CONFIG.textRedSweepDelay +
+        ANIMATION_CONFIG.textRedSweepDuration;
+      if (timelineRef.current.elapsedTime >= animationEnd && !animationComplete) {
+        setAnimationComplete(true);
       }
 
       // 📝 ANIMACIÓN DE TEXTO: Depende del timeline
@@ -292,23 +337,18 @@ function Cube() {
           extraScale = 1 + sweepPeak * 0.3;
         }
         
-        // Detectar cuando la animación completa
-        if (redSweepProgress === 1.0 && !animationComplete) {
-          setAnimationComplete(true);
-        }
-        
         // Fade out del texto cuando se está desvaneciendo
         let textOpacity = 1;
-        if (textFadingOut && timelineRef.current.textFadeOutStartTime === undefined) {
+        if (animationComplete && timelineRef.current.textFadeOutStartTime === undefined) {
           timelineRef.current.textFadeOutStartTime = timelineRef.current.elapsedTime;
         }
-        if (textFadingOut && timelineRef.current.textFadeOutStartTime !== undefined) {
+        if (animationComplete && timelineRef.current.textFadeOutStartTime !== undefined) {
           const fadeOutElapsed = timelineRef.current.elapsedTime - timelineRef.current.textFadeOutStartTime;
           const fadeOutProgress = Math.min(fadeOutElapsed / ANIMATION_CONFIG.textFadeOutDuration, 1.0);
           textOpacity = 1 - fadeOutProgress;
         }
         
-        const mat = textRef.current.material as any;
+        const mat = textRef.current.material as MeshBasicMaterial;
         mat.opacity = textOpacity;
         mat.color.set(color);
         
@@ -318,28 +358,6 @@ function Cube() {
       }
     }
   });
-
-  // 🔥 UPDATED Face component with edge ref forwarding
-  const Face = ({ position, rotation, index }: any) => {
-    const edgeRef = (el: any) => {
-      if (el) edgeRefs.current[index] = el;
-    };
-
-    return (
-      <group position={position}>
-        <mesh rotation={rotation}>
-          <planeGeometry args={[1, 1]} />
-          <meshBasicMaterial color="#ffffff" side={DoubleSide} />
-          <Edges 
-            ref={edgeRef}
-            scale={1.01} 
-            threshold={15} 
-            color="black" 
-          />
-        </mesh>
-      </group>
-    );
-  };
 
   return (
     <>
@@ -354,26 +372,27 @@ function Cube() {
         onPointerOver={() => {
           if (!clicked) {
             setHovered(true);
-            document.body.style.cursor = 'pointer';
+            setCursor("pointer");
           }
         }}
         onPointerOut={() => {
           if (!clicked) {
             setHovered(false);
-            document.body.style.cursor = 'auto';
+            setCursor("auto");
           }
         }}
         onClick={handleClick}
       >
-        <Face index={0} position={[0, 0, 0.5]} rotation={[0, 0, 0]} />
-        <Face index={1} position={[0, 0, -0.5]} rotation={[0, Math.PI, 0]} />
-        <Face index={2} position={[0.5, 0, 0]} rotation={[0, -Math.PI / 2, 0]} />
-        <Face index={3} position={[-0.5, 0, 0]} rotation={[0, Math.PI / 2, 0]} />
-        <Face index={4} position={[0, 0.5, 0]} rotation={[-Math.PI / 2, 0, 0]} />
-        <Face index={5} position={[0, -0.5, 0]} rotation={[Math.PI / 2, 0, 0]} />
+        <Face registerEdge={registerEdge} index={0} position={[0, 0, 0.5]} rotation={[0, 0, 0]} />
+        <Face registerEdge={registerEdge} index={1} position={[0, 0, -0.5]} rotation={[0, Math.PI, 0]} />
+        <Face registerEdge={registerEdge} index={2} position={[0.5, 0, 0]} rotation={[0, -Math.PI / 2, 0]} />
+        <Face registerEdge={registerEdge} index={3} position={[-0.5, 0, 0]} rotation={[0, Math.PI / 2, 0]} />
+        <Face registerEdge={registerEdge} index={4} position={[0, 0.5, 0]} rotation={[-Math.PI / 2, 0, 0]} />
+        <Face registerEdge={registerEdge} index={5} position={[0, -0.5, 0]} rotation={[Math.PI / 2, 0, 0]} />
       </group>
 
       {showText && (
+        <Suspense fallback={null}>
         <Text
           ref={textRef}
           position={[0, 0, -4]}
@@ -385,6 +404,7 @@ function Cube() {
         >
           😈
         </Text>
+        </Suspense>
       )}
     </>
   );
@@ -392,7 +412,7 @@ function Cube() {
 
 export default function Home() {
   return (
-    <main className="w-full h-screen bg-black flex items-center justify-center">
+    <main className="w-full h-screen h-dvh bg-black flex items-center justify-center">
       <Canvas camera={{ position: [0, 0, 4] }}>
         <Cube />
       </Canvas>

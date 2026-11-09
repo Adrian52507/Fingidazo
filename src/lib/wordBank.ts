@@ -822,7 +822,7 @@ export const wordBank: Record<string, string[]> = {
     "Achorao",
     "Monse",
     "¡Estoy aguja!",
-    "Yara ",
+    "Yara",
     "Manyas",
     "No seas sapo",
     "Misio",
@@ -861,10 +861,3 @@ export const wordBank: Record<string, string[]> = {
     "Cordillera Blanca"
   ],
 };
-
-export function pickRandomWord(category: string) {
-  const list = wordBank[category] ?? [];
-  if (!list.length) return null;
-  const idx = Math.floor(Math.random() * list.length);
-  return list[idx];
-}
