@@ -1,30 +1,107 @@
 @import "tailwindcss";
 
+/* ------------------------------------------------------------------ */
+/* Tokens de la terminal: única fuente de verdad para colores y fuente */
+/* ------------------------------------------------------------------ */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --bg: #000000;
+  --g: #00ff41;          /* verde principal */
+  --gd: #008f11;         /* verde oscuro (glow) */
+  --gh: #39ff14;         /* verde hover */
+  --g-line: rgb(0 255 65 / 35%);
+  --g-soft: rgb(0 255 65 / 6%);
+  --danger: #ff4d4d;
+  --font-terminal: ui-monospace, SFMono-Regular, Menlo, Monaco, "Roboto Mono", "Courier New", monospace;
+  color-scheme: dark;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --color-background: var(--bg);
+  --color-foreground: var(--g);
+  --font-mono: var(--font-terminal);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html,
+body {
+  background: var(--bg);
+  color: var(--g);
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-terminal);
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
 }
 
+/* Foco visible para teclado en todo el sitio */
+:where(button, a, input, [role="button"], [tabindex]):focus-visible {
+  outline: 2px solid var(--gh);
+  outline-offset: 2px;
+}
+
+/* ------------------------------------------------------------------ */
+/* Botón de terminal compartido                                        */
+/* ------------------------------------------------------------------ */
+.term-btn {
+  border: 1px solid var(--g);
+  border-radius: 6px;
+  padding: 8px 14px;
+  background: transparent;
+  color: var(--g);
+  font: inherit;
+  cursor: pointer;
+  transition: color 120ms ease, box-shadow 120ms ease, border-color 120ms ease;
+}
+
+.term-btn:hover:not(:disabled) {
+  color: var(--gh);
+  border-color: var(--gh);
+  box-shadow: 0 0 10px var(--gh);
+}
+
+.term-btn:active:not(:disabled) {
+  animation: glitch-frame 160ms steps(2, end);
+}
+
+.term-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.term-error {
+  color: var(--danger);
+  font-size: 13px;
+  text-align: center;
+  text-transform: uppercase;
+  text-shadow: 0 0 6px rgb(255 77 77 / 45%);
+}
+
+/* Efecto glitch al confirmar (antes la clase existía pero no tenía estilos) */
+.glitch {
+  animation: glitch-frame 260ms steps(2, end);
+}
+
+@keyframes glitch-frame {
+  0%   { transform: translate(0, 0); }
+  25%  { transform: translate(-2px, 0); }
+  50%  { transform: translate(2px, 0); }
+  75%  { transform: translate(-1px, 0); }
+  100% { transform: translate(0, 0); }
+}
+
+/* Líneas de escaneo CRT sobre un contenedor con position:relative */
+.scanlines::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: 0.06;
+  background-image: repeating-linear-gradient(to bottom, transparent 0, transparent 2px, #000 2px, #000 3px);
+  pointer-events: none;
+}
+
+/* ------------------------------------------------------------------ */
+/* Pantalla de inicio                                                  */
+/* ------------------------------------------------------------------ */
 .start-instruction {
   width: min(88vw, 34rem);
   margin: 0;
@@ -44,8 +121,13 @@ body {
   }
 }
 
+/* Respeta la preferencia de movimiento reducido en todas las pantallas */
 @media (prefers-reduced-motion: reduce) {
-  .start-instruction {
-    animation: none;
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }

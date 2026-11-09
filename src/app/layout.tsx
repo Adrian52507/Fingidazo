@@ -1,29 +1,17 @@
-import type { Metadata } from "next";
-import { Geist, Geist_Mono, Quicksand } from "next/font/google";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
-
-const quicksand = Quicksand({
-  variable: "--font-quicksand",
-  weight: ["700"],
-  subsets: ["latin"],
-});
 
 export const metadata: Metadata = {
   title: "👁️ El Fingidazo",
-  description: "El Fingidazo - Un juego intrigante",
+  description: "El Fingidazo: el juego de fiesta donde alguien finge saber la palabra secreta.",
   icons: {
     icon: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='75' font-size='75'>👁️</text></svg>",
   },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#000000",
+  colorScheme: "dark",
 };
 
 export default function RootLayout({
@@ -32,12 +20,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} ${quicksand.variable} antialiased`}
-      >
-        {children}
-      </body>
+    <html lang="es">
+      <body className="antialiased">{children}</body>
     </html>
   );
 }

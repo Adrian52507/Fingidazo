@@ -1,191 +1,163 @@
 "use client";
 
-import React, { useRef, useState, useEffect } from "react";
-import { useSearchParams, useRouter } from "next/navigation";
+import { useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { LoadingOverlay } from "../LoadingOverlay";
+import { MAX_NAME_LENGTH, configQuery, parseConfig, validateNames } from "@/lib/game";
 
 export default function NamesClient() {
-  const sp = useSearchParams();
-  const playersCount = parseInt(sp?.get("players") ?? "3", 10) || 3;
-  const impostorsCount = parseInt(sp?.get("impostors") ?? "1", 10) || 1;
-  const namesParam = sp?.get("names") ?? "";
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [config] = useState(() => parseConfig(searchParams, { players: 3, impostors: 1 }));
 
-  const [names, setNames] = useState<string[]>([]);
+  const [names, setNames] = useState<string[]>(config.names);
+  const [error, setError] = useState<{ message: string; invalid: number[] } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [glitch, setGlitch] = useState(false);
   const clickAudioRef = useRef<HTMLAudioElement | null>(null);
-
-  // Initialize names array, preserving existing values when returning from categories.
-  useEffect(() => {
-    let initialNames: string[] = [];
-
-    if (namesParam) {
-      try {
-        const parsed = JSON.parse(namesParam);
-        if (Array.isArray(parsed)) {
-          initialNames = parsed.map((value) => String(value ?? ""));
-        }
-      } catch {
-        try {
-          const parsed = JSON.parse(decodeURIComponent(namesParam));
-          if (Array.isArray(parsed)) {
-            initialNames = parsed.map((value) => String(value ?? ""));
-          }
-        } catch {
-          initialNames = [];
-        }
-      }
-    }
-
-    const normalized = Array.from({ length: playersCount }, (_, idx) => {
-      const value = initialNames[idx] ?? "";
-      return value.substring(0, 20);
-    });
-
-    setNames(normalized);
-  }, [playersCount, namesParam]);
+  const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
 
   function playClickSound() {
     const a = clickAudioRef.current;
     if (!a) return;
-    try {
-      a.currentTime = 0;
-      void a.play();
-    } catch (e) {
-      // ignore
-    }
+    a.currentTime = 0;
+    a.play().catch(() => {});
   }
 
   function updateName(index: number, value: string) {
-    const updated = [...names];
-    updated[index] = value.substring(0, 20); // limit to 20 chars
-    setNames(updated);
+    setNames((prev) => prev.map((n, i) => (i === index ? value.slice(0, MAX_NAME_LENGTH) : n)));
+    if (error) setError(null);
   }
 
-  function doGlitch() {
-    setGlitch(true);
-    setTimeout(() => setGlitch(false), 260);
+  function handleKeyDown(index: number, event: React.KeyboardEvent<HTMLInputElement>) {
+    if (event.key !== "Enter") return;
+    const next = inputRefs.current[index + 1];
+    if (next) {
+      event.preventDefault();
+      next.focus();
+    }
+    // En el último campo, Enter envía el formulario.
   }
 
-  const router = useRouter();
+  function goBack() {
+    router.push(`/game?${configQuery({ ...config, names })}`);
+  }
 
-  function continueToCategories() {
-    // Validate that at least the current name is filled
-    const allFilled = names.every((n) => n.trim().length > 0);
-    if (!allFilled) {
-      alert("Por favor, ingresa un nombre para cada jugador.");
+  function continueToCategories(event: React.FormEvent) {
+    event.preventDefault();
+    const trimmed = names.map((n) => n.trim());
+    const problem = validateNames(trimmed);
+    if (problem) {
+      setError(problem);
+      inputRefs.current[problem.invalid[0]]?.focus();
       return;
     }
 
-    doGlitch();
+    setGlitch(true);
+    setTimeout(() => setGlitch(false), 260);
     setIsLoading(true);
-
     setTimeout(() => {
-      const namesParam = encodeURIComponent(JSON.stringify(names));
-      router.push(
-        `/game/categories?players=${playersCount}&impostors=${impostorsCount}&names=${namesParam}`
-      );
+      router.push(`/game/categories?${configQuery({ ...config, names: trimmed })}`);
     }, 1200);
   }
 
-  const COLORS = {
-    bg: "#000000",
-    primary: "#00FF41",
-    primaryDark: "#008F11",
-    hover: "#39FF14",
-  };
-
   return (
-    <main style={{ background: COLORS.bg }} className="w-full h-screen flex items-center justify-center overflow-hidden">
+    <main className="w-full h-screen h-dvh flex items-center justify-center overflow-hidden">
       <style>{`
-        :root{--g:${COLORS.primary};--gd:${COLORS.primaryDark};--gh:${COLORS.hover};}
-        *{box-sizing:border-box}
-        .names-console{width:94%;max-width:900px;height:84vh;border:1px solid var(--g);padding:20px;display:flex;flex-direction:column;gap:14px;background:#000;font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, 'Roboto Mono', 'Courier New', monospace;color:var(--g);}
+        .names-console{width:94%;max-width:900px;height:84vh;height:84dvh;border:1px solid var(--g);padding:20px;display:flex;flex-direction:column;gap:14px;background:var(--bg);position:relative;animation:subtleFlicker 5.5s infinite}
         .names-console .top{display:flex;justify-content:space-between;align-items:center;border-bottom:1px solid var(--g);padding-bottom:8px}
         .names-brand{text-transform:uppercase;letter-spacing:2px;font-size:18px;text-shadow:0 0 6px var(--g),0 0 16px var(--gd);padding:6px 0}
-        .names-meta{font-size:13px;opacity:0.8}
-        .names-screen{flex:1;padding:12px 0;overflow-y:auto;display:flex;flex-direction:column;gap:8px;scrollbar-width:none;-ms-overflow-style:none}
+        .names-meta{font-size:13px;opacity:.8}
+        .names-screen{flex:1;padding:12px 0;overflow-y:auto;display:flex;flex-direction:column;gap:8px;scrollbar-width:none}
         .names-screen::-webkit-scrollbar{display:none}
-        .name-row{display:flex;align-items:center;gap:12px;padding:8px;border:1px solid rgba(0,255,65,0.3);border-radius:4px}
-        .name-label{min-width:120px;font-size:13px;opacity:0.8}
-        .name-input{flex:1;background:transparent;border:none;color:var(--g);font-family:inherit;font-size:16px;padding:4px 6px;outline:none}
-        .name-input::placeholder{color:rgba(0,255,65,0.4)}
-        .controls-names{display:flex;gap:8px;margin-top:12px;justify-content:center}
-        .cmd{border:1px solid var(--g);padding:8px 14px;background:transparent;color:var(--g);text-transform:uppercase;font-size:12px;cursor:pointer;border-radius:6px}
-        .cmd:hover{color:var(--gh);box-shadow:0 0 10px var(--gh);border-color:var(--gh)}
-        .cmd:disabled{opacity:0.35;cursor:not-allowed}
-        .row{white-space:pre-wrap;overflow-wrap:anywhere;color:var(--g);text-transform:uppercase;font-size:16px;line-height:1.1;text-shadow:0 0 6px var(--g),0 0 12px var(--gd);text-align:center}
-        .names-console:before{content:"";position:absolute;inset:0;opacity:0.06;background-image:repeating-linear-gradient(to bottom, transparent 0px, transparent 2px, #000 2px, #000 3px);pointer-events:none}
-        .names-console{animation:subtleFlicker 5.5s infinite}
-        @keyframes subtleFlicker{0%,100%{filter:brightness(1)}50%{filter:brightness(0.985)}}
-        .speck{position:absolute;width:3px;height:3px;background:var(--g);opacity:0.07}
-        @media (max-width:640px){.names-console{padding:12px;height:90vh}.names-brand{font-size:14px}.meta-sep{display:none}.names-meta{display:flex;flex-direction:column;align-items:flex-end;gap:2px}}
+        .names-title{text-transform:uppercase;text-align:center;margin-bottom:12px;opacity:.9;text-shadow:0 0 6px var(--g),0 0 12px var(--gd)}
+        .name-row{display:flex;align-items:center;gap:12px;padding:8px;border:1px solid var(--g-line);border-radius:4px;transition:border-color 120ms ease, box-shadow 120ms ease}
+        .name-row:focus-within{border-color:var(--g);box-shadow:0 0 8px rgb(0 255 65 / 25%)}
+        .name-row.invalid{border-color:var(--danger)}
+        .name-label{min-width:120px;font-size:13px;opacity:.8}
+        .name-input{flex:1;min-width:0;background:transparent;border:none;color:var(--g);font:inherit;font-size:16px;padding:4px 6px;outline:none}
+        .name-input::placeholder{color:rgb(0 255 65 / 40%)}
+        .controls-names{display:flex;gap:8px;justify-content:center}
+        .names-console .cmd{padding:8px 14px;text-transform:uppercase;font-size:12px}
+        @keyframes subtleFlicker{0%,100%{filter:brightness(1)}50%{filter:brightness(.985)}}
+        @media (max-width:640px){.names-console{padding:12px;height:90vh;height:90dvh}.names-brand{font-size:14px}.meta-sep{display:none}.names-meta{display:flex;flex-direction:column;align-items:flex-end;gap:2px}}
         @media (max-width:420px){
-          .names-console{width:90%;padding:10px;height:83vh;gap:10px}
-          .names-brand{font-size:16px;padding:6px 0}
+          .names-console{width:90%;padding:10px;gap:10px}
           .names-meta{font-size:12px}
           .name-row{gap:8px;padding:6px}
           .name-label{min-width:80px;font-size:12px}
-          .name-input{font-size:16px}
-          .cmd{padding:8px 12px;font-size:11px}
+          .names-console .cmd{padding:10px 14px;font-size:12px}
         }
       `}</style>
 
-      <div style={{ position: "relative" }} className={`names-console ${glitch ? "glitch" : ""}`}>
+      <form
+        onSubmit={continueToCategories}
+        noValidate
+        className={`names-console scanlines ${glitch ? "glitch" : ""}`}
+      >
         {isLoading ? <LoadingOverlay /> : null}
 
         <div className="top">
           <div className="names-brand">SYSTEM: PLAYER_REGISTRY</div>
           <div className="names-meta">
-            <strong>Jugadores</strong> {playersCount}<span className="meta-sep"> | </span><strong>Fingidazos</strong> {impostorsCount}
+            <strong>Jugadores</strong> {config.players}
+            <span className="meta-sep"> | </span>
+            <strong>Fingidazos</strong> {config.impostors}
           </div>
         </div>
 
         <div className="names-screen">
-          <div className="row" style={{ marginBottom: 12, opacity: 0.9 }}>INGRESA LOS NOMBRES:</div>
+          <div className="names-title">Ingresa los nombres:</div>
 
-          {names.map((name, idx) => (
-            <div key={idx} className="name-row">
-              <div className="name-label">Jugador {idx + 1}:</div>
-              <input
-                type="text"
-                className="name-input"
-                placeholder={`Nombre ${idx + 1}`}
-                value={name}
-                onChange={(e) => updateName(idx, e.target.value)}
-                onMouseDown={playClickSound}
-                maxLength={20}
-              />
-            </div>
-          ))}
+          {names.map((name, idx) => {
+            const invalid = error?.invalid.includes(idx) ?? false;
+            const inputId = `player-name-${idx}`;
+            return (
+              <div key={idx} className={`name-row ${invalid ? "invalid" : ""}`}>
+                <label className="name-label" htmlFor={inputId}>
+                  Jugador {idx + 1}:
+                </label>
+                <input
+                  id={inputId}
+                  ref={(el) => {
+                    inputRefs.current[idx] = el;
+                  }}
+                  type="text"
+                  className="name-input"
+                  placeholder={`Nombre ${idx + 1}`}
+                  value={name}
+                  onChange={(e) => updateName(idx, e.target.value)}
+                  onKeyDown={(e) => handleKeyDown(idx, e)}
+                  onPointerDown={playClickSound}
+                  maxLength={MAX_NAME_LENGTH}
+                  autoComplete="off"
+                  autoCapitalize="words"
+                  enterKeyHint={idx === names.length - 1 ? "done" : "next"}
+                  aria-invalid={invalid}
+                  aria-describedby={invalid ? "names-error" : undefined}
+                />
+              </div>
+            );
+          })}
         </div>
 
+        {error ? (
+          <div id="names-error" className="term-error" role="alert">
+            {error.message}
+          </div>
+        ) : null}
+
         <div className="controls-names">
-          <button
-            className="cmd"
-            onClick={() => window.location.href = "/game"}
-            onMouseDown={playClickSound}
-          >
+          <button type="button" className="term-btn cmd" onClick={goBack} onPointerDown={playClickSound}>
             Volver
           </button>
-          <button
-            className="cmd"
-            onClick={continueToCategories}
-            onMouseDown={playClickSound}
-            disabled={isLoading}
-          >
+          <button type="submit" className="term-btn cmd" onPointerDown={playClickSound} disabled={isLoading}>
             Continuar
           </button>
         </div>
 
-        <div style={{ position: "absolute", inset: 0, pointerEvents: "none" }} aria-hidden>
-          <div className="speck" style={{ left: "8%", top: "14%" }} />
-          <div className="speck" style={{ left: "30%", top: "40%" }} />
-          <div className="speck" style={{ left: "52%", top: "22%" }} />
-          <div className="speck" style={{ left: "74%", top: "56%" }} />
-        </div>
         <audio ref={clickAudioRef} src="/sounds/key_1.mp3" preload="auto" aria-hidden />
-      </div>
+      </form>
     </main>
   );
 }
